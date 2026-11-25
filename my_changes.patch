@@ -1,0 +1,75 @@
+diff --git a/api/main.py b/api/main.py
+index ca64439..156a1a3 100644
+--- a/api/main.py
++++ b/api/main.py
+@@ -5,7 +5,6 @@ FastAPI AI 서버 - 반려동물 안구 질환 분석
+     uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+ """
+ from __future__ import annotations
+-
+ from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Body
+ from fastapi.middleware.cors import CORSMiddleware
+ from fastapi.responses import FileResponse
+@@ -16,6 +15,7 @@ import numpy as np
+ from PIL import Image
+ import io
+ import json
++import time
+ import logging
+ import os
+ import sys
+@@ -825,6 +825,7 @@ async def generate_report(request: ReportRequest):
+ 3. 보호자가 이해하기 쉬운 언어로 작성하세요.
+ 4. 객관적이고 정확한 정보를 제공하되, 과도한 불안을 조성하지 마세요.
+ 5. disease_analysis에는 **Top 3 의심 질환({top3_text})만** 포함하세요. 나머지 질환은 생략하세요.
++6. precautions는 **정확히 3개**만 작성하세요. 4개 이상 작성하지 마세요. 각 항목은 1문장으로 작성하세요.
+ 
+ **반려동물 정보:**
+ - 이름: {request.pet_name}
+@@ -866,11 +867,11 @@ JSON만 출력하고 다른 설명은 불필요합니다."""
+ 
+         # Claude API 호출
+         logger.info(f"Claude API 호출 중: {request.pet_name} ({request.animal_type})")
+-        
++        start = time.time()
+         message = anthropic_client.messages.create(
+-            model="claude-sonnet-4-20250514",
+-            max_tokens=2000,
+-            temperature=0.7,
++            model="claude-sonnet-5-5",
++            max_tokens=2000, 
++            thinking={"type": "between_tools"},   
+             messages=[
+                 {
+                     "role": "user",
+@@ -878,9 +879,15 @@ JSON만 출력하고 다른 설명은 불필요합니다."""
+                 }
+             ]
+         )
+-        
++        elapsed = time.time() - start
++        logger.info(
++            f"[측정] Claude {elapsed:.1f}초 / 입력 {message.usage.input_tokens}토큰 "
++            f"/ 출력 {message.usage.output_tokens}토큰 / 블록 {[b.type for b in message.content]}"
++        )
+         # 응답 파싱
+-        response_text = message.content[0].text.strip()
++        response_text = next(
++    block.text for block in message.content if block.type == "text"
++).strip()
+         
+         # JSON 파싱 (```json ``` 태그 제거)
+         if response_text.startswith("```json"):
+diff --git a/api/requirements.txt b/api/requirements.txt
+index 06289f9..8f8655d 100644
+--- a/api/requirements.txt
++++ b/api/requirements.txt
+@@ -19,7 +19,7 @@ grad-cam>=1.3.0
+ fastapi>=0.104.0
+ uvicorn[standard]>=0.24.0
+ python-multipart>=0.0.6
+-anthropic>=0.18.0
++anthropic==0.89.0
+ python-dotenv>=1.0.0
+ reportlab>=4.0.0
+ 
